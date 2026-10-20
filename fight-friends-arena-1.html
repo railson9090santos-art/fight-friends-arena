@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fight Friends Arena</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#080b1a;color:white;font-family:Arial,sans-serif;text-align:center;overflow:hidden}
+header{padding:10px;background:#141b38;border-bottom:3px solid #00eaff}
+h1{margin:0;font-size:clamp(20px,5vw,32px);color:#00eaff;text-shadow:0 0 12px #00eaff}
+#arena{display:block;width:100%;height:58vh;min-height:300px;background:#10132a;touch-action:none}
+.panel{display:flex;justify-content:space-around;gap:8px;padding:8px}
+.health{width:42%;height:17px;background:#34344c;border:2px solid white;border-radius:10px;overflow:hidden}
+.bar{height:100%;width:100%;background:#27f58a;transition:width .15s}
+.name{font-weight:bold;margin:4px}
+#message{color:#ffe66d;min-height:24px;font-weight:bold}
+button{border:0;border-radius:12px;padding:12px 14px;color:white;font-weight:bold;background:#333b65;box-shadow:0 3px #15182c;touch-action:manipulation}
+button:active{transform:scale(.94)}
+#start{background:#00a9c7;font-size:18px}
+#choose{position:fixed;inset:0;background:#080b1af2;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:16px;z-index:5;padding:20px}
+.cards{display:flex;gap:12px}
+.char{width:135px;padding:15px 8px;border:2px solid #3d4775;border-radius:16px;background:#151b37}
+.char.selected{border-color:#00eaff;box-shadow:0 0 18px #00eaff}
+.face{font-size:50px}
+#controls{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;gap:10px}
+#stick{width:112px;height:112px;position:relative;border-radius:50%;background:#242b4d;border:3px solid #6472a5;touch-action:none;flex-shrink:0}
+#knob{position:absolute;width:45px;height:45px;left:30px;top:30px;border-radius:50%;background:#00eaff;box-shadow:0 0 12px #00eaff;pointer-events:none}
+.attacks{display:grid;grid-template-columns:repeat(2,62px);gap:8px}
+.attacks button{height:54px;padding:3px;font-size:12px}
+#hit{background:#b82e55}
+#blast{background:#5c35b9}
+#guard{background:#287c9a}
+#special{background:#c66b16}
+small{color:#aab4db}
+</style>
+</head>
+<body>
+<header><h1>⚔️ FIGHT FRIENDS ARENA</h1></header>
+<div class="panel">
+  <div style="width:45%"><div class="name" id="pname">RAILSON</div><div class="health"><div class="bar" id="php"></div></div></div>
+  <div style="width:45%"><div class="name">BOSS ANINHA 👑</div><div class="health"><div class="bar" id="bhp"></div></div></div>
+</div>
+<canvas id="arena"></canvas>
+<div id="message">Escolha seu personagem para começar!</div>
+<div id="controls">
+  <div id="stick"><div id="knob"></div></div>
+  <div class="attacks"><button id="hit">👊 SOCO</button><button id="special">⚡ ESPECIAL</button><button id="blast">🔥 RAIO</button><button id="guard">🛡️ DEFESA</button></div>
+</div>
+<small>Controle redondo: mova o personagem • Derrote a chefe!</small>
+<div id="choose">
+  <h1>ESCOLHA SEU LUTADOR</h1>
+  <div class="cards">
+    <button class="char selected" id="railson"><div class="face">🥷</div><b>RAILSON</b><br><small>Energia azul</small></button>
+    <button class="char" id="sanny"><div class="face">🦸‍♀️</div><b>SANNY</b><br><small>Energia rosa</small></button>
+  </div>
+  <button id="start">ENTRAR NA ARENA ▶</button>
+</div>
+<script>
+(() => {
+"use strict";
+const canvas=document.getElementById("arena");
+const ctx=canvas.getContext("2d");
+const $=id=>document.getElementById(id);
+let W=0,H=0,floor=0;
+let selected="railson",player=null,boss=null;
+let running=false,ended=false,guarding=false;
+let keys={},particles=[],shots=[],score=0;
+let attackCooldown=0,bossCooldown=0,shake=0;
+let joystick={active:false,x:0,y:0};
+const colors={railson:"#00eaff",sanny:"#ff4fa3",boss:"#ffb52e"};
+function resize(){
+ const r=canvas.getBoundingClientRect();
+ const d=Math.min(window.devicePixelRatio||1,2);
+ canvas.width=Math.max(1,Math.floor(r.width*d));canvas.height=Math.max(1,Math.floor(r.height*d));
+ ctx.setTransform(d,0,0,d,0,0);W=r.width;H=r.height;floor=H-38;
+ if(player)player.y=floor-player.h;if(boss)boss.y=floor-boss.h;draw();
+}
+window.addEventListener("resize",resize);
+function fighter(name,x){return {name,x,y:0,w:48,h:94,hp:100,max:100,dir:1,step:0,flash:0,attack:0,energy:100,vy:0};}
+function newGame(){
+ try{
+  player=fighter(selected,W*.22);boss=fighter("boss",W*.72);boss.hp=boss.max=220;
+  player.y=floor-player.h;boss.y=floor-boss.h;player.dir=1;boss.dir=-1;
+  particles=[];shots=[];score=0;attackCooldown=0;bossCooldown=0;shake=0;
+  running=true;ended=false;guarding=false;$("choose").style.display="none";
+  $("message").textContent="LUTE! Use os poderes para vencer!";$("pname").textContent=selected.toUpperCase();updateBars();draw();
+ }catch(e){$("message").textContent="Erro ao iniciar: "+e.message;}
+}
+$("railson").onclick=()=>{selected="railson";$("railson").classList.add("selected");$("sanny").classList.remove("selected");};
+$("sanny").onclick=()=>{selected="sanny";$("sanny").classList.add("selected");$("railson").classList.remove("selected");};
+$("start").onclick=e=>{e.preventDefault();newGame();};
+$("hit").onclick=()=>attack("hit");$("special").onclick=()=>attack("special");$("blast").onclick=()=>attack("blast");
+$("guard").onpointerdown=()=>guarding=true;$("guard").onpointerup=()=>guarding=false;$("guard").onpointerleave=()=>guarding=false;
+function updateBars(){if(!player||!boss)return;$("php").style.width=Math.max(0,player.hp/player.max*100)+"%";$("bhp").style.width=Math.max(0,boss.hp/boss.max*100)+"%";}
+function burst(x,y,color,count=12){for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,s=1+Math.random()*5;particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1,life:25+Math.random()*20,color,size:2+Math.random()*5});}}
+function attack(type){
+ if(!running||ended||!player||attackCooldown>0)return;
+ if(type==="special"&&player.energy<30){$("message").textContent="Energia insuficiente! Use socos para continuar.";return;}
+ if(type==="blast"&&player.energy<18){$("message").textContent="Você precisa de mais energia!";return;}
+ player.attack=12;attackCooldown=type==="hit"?16:28;
+ if(type==="special"){player.energy-=30;shots.push({x:player.x+player.w/2,y:player.y+35,vx:player.dir*9,color:colors[selected],damage:38,r:15});burst(player.x+player.w/2,player.y+35,colors[selected],10);$("message").textContent="⚡ PODER ESPECIAL!";}
+ else if(type==="blast"){player.energy-=18;shots.push({x:player.x+player.w/2,y:player.y+35,vx:player.dir*13,color:"#ff5d36",damage:25,r:10});$("message").textContent="🔥 RAIO DE ENERGIA!";}
+ else if(Math.abs((player.x+player.w/2)-(boss.x+boss.w/2))<85){boss.hp-=12;boss.flash=8;shake=5;burst(boss.x+boss.w/2,boss.y+40,"#ffe66d",8);$("message").textContent="👊 ACERTOU!";}else $("message").textContent="Chegue mais perto para acertar!";
+ updateBars();
+}
+function roundedRect(x,y,w,h,r,color){ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill();}
+function drawFighter(f,isBoss=false){
+ const cx=f.x+f.w/2,cy=f.y,color=isBoss?colors.boss:colors[f.name];ctx.save();
+ if(f.flash>0){ctx.globalAlpha=.5+Math.random()*.5;f.flash--;}
+ const walking=running&&Math.abs(f.step)>0,swing=walking?Math.sin(f.step)*8:0;
+ ctx.fillStyle="#05071399";ctx.beginPath();ctx.ellipse(cx,floor+1,34,8,0,0,Math.PI*2);ctx.fill();
+ roundedRect(cx-18,cy+66+swing,14,27,5,isBoss?"#6a347e":"#27304f");roundedRect(cx+4,cy+66-swing,14,27,5,isBoss?"#6a347e":"#27304f");
+ roundedRect(cx-22,cy+86+swing,20,8,4,"#11172b");roundedRect(cx+1,cy+86-swing,20,8,4,"#11172b");
+ roundedRect(cx-23,cy+32,46,42,10,color);ctx.fillStyle="#ffffff40";ctx.fillRect(cx-14,cy+36,5,28);
+ ctx.save();ctx.translate(cx-20,cy+42);ctx.rotate(f.attack>0?-.9:Math.sin(f.step)*.2);roundedRect(-7,0,14,35,6,color);ctx.restore();
+ ctx.save();ctx.translate(cx+20,cy+42);ctx.rotate(f.attack>0?.9:Math.sin(f.step+1)*.2);roundedRect(-7,0,14,35,6,color);ctx.restore();
+ ctx.fillStyle=isBoss?"#e6a57d":"#c98c69";ctx.beginPath();ctx.arc(cx,cy+20,21,0,Math.PI*2);ctx.fill();
+ if(isBoss){ctx.fillStyle="#743e9e";ctx.beginPath();ctx.arc(cx,cy+13,22,Math.PI,Math.PI*2);ctx.fill();ctx.fillStyle="#fff";ctx.fillRect(cx-13,cy+19,8,4);ctx.fillRect(cx+5,cy+19,8,4);}
+ else{ctx.fillStyle=selected==="sanny"&&f===player?"#5a2a70":"#20243c";ctx.fillRect(cx-20,cy+6,40,10);ctx.fillStyle=color;ctx.fillRect(cx-15,cy+19,30,5);ctx.fillStyle="#fff";ctx.fillRect(cx-12,cy+20,5,3);ctx.fillRect(cx+7,cy+20,5,3);}
+ if(f===player&&guarding){ctx.strokeStyle="#67dfff";ctx.lineWidth=4;ctx.beginPath();ctx.arc(cx,cy+45,48,0,Math.PI*2);ctx.stroke();}ctx.restore();
+}
+function draw(){
+ if(!W||!H)return;ctx.save();if(shake>0){ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);shake*=.8;}
+ const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,"#11183d");g.addColorStop(1,"#31204c");ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ for(let i=0;i<7;i++){ctx.fillStyle=i%2?"#ff3ca622":"#00eaff22";ctx.fillRect(i*W/7,0,W/14,H-40);}
+ ctx.strokeStyle="#00d9ff30";ctx.lineWidth=1;for(let x=0;x<W;x+=35){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,floor);ctx.stroke();}for(let y=floor;y<H;y+=12){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+ const fg=ctx.createLinearGradient(0,floor,0,H);fg.addColorStop(0,"#252b51");fg.addColorStop(1,"#0b1027");ctx.fillStyle=fg;ctx.fillRect(0,floor,W,H-floor);ctx.fillStyle="#00eaff";ctx.fillRect(0,floor,W,3);
+ ctx.fillStyle="#ffffff16";ctx.font="bold 22px Arial";ctx.fillText("FIGHT!",W*.08,H*.2);ctx.fillText("ARENA",W*.68,H*.2);
+ if(player)drawFighter(player);if(boss)drawFighter(boss,true);
+ for(const s of shots){ctx.shadowBlur=18;ctx.shadowColor=s.color;ctx.fillStyle=s.color;ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.fillStyle="#fff9";ctx.fillRect(s.x-s.r*2,s.y-2,s.r*2,4);}
+ for(const p of particles){ctx.globalAlpha=Math.max(0,p.life/40);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.size,p.size);}ctx.globalAlpha=1;ctx.restore();
+}
+function update(){
+ if(!running||ended||!player||!boss)return;if(attackCooldown>0)attackCooldown--;if(bossCooldown>0)bossCooldown--;player.energy=Math.min(100,player.energy+.09);
+ let move=joystick.x;if(keys.ArrowLeft||keys.a)move=-1;if(keys.ArrowRight||keys.d)move=1;
+ if(move!==0){player.x+=move*4.2;player.step+=.18;player.dir=move>0?1:-1;}player.x=Math.max(0,Math.min(W-player.w,player.x));boss.dir=player.x<boss.x?-1:1;
+ const distance=Math.abs((player.x+player.w/2)-(boss.x+boss.w/2));if(distance>58){boss.x+=(player.x<boss.x?-1:1)*1.25;boss.step+=.08;}else if(bossCooldown<=0){bossCooldown=42;if(!guarding){player.hp-=7;shake=3;burst(player.x+player.w/2,player.y+45,"#ff4567",7);$("message").textContent="Aninha acertou você!";}else{burst(player.x+player.w/2,player.y+45,"#66eaff",5);$("message").textContent="🛡️ Defesa bloqueou o ataque!";}}
+ for(let i=shots.length-1;i>=0;i--){const s=shots[i];s.x+=s.vx;if(s.x>boss.x-10&&s.x<boss.x+boss.w+10&&s.y>boss.y&&s.y<boss.y+boss.h){boss.hp-=s.damage;boss.flash=8;shake=4;burst(s.x,s.y,s.color,15);shots.splice(i,1);score+=s.damage;}else if(s.x<0||s.x>W)shots.splice(i,1);}
+ for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=.12;p.life--;if(p.life<=0)particles.splice(i,1);}
+ if(player.hp<=0){player.hp=0;finish(false);}else if(boss.hp<=0){boss.hp=0;finish(true);}updateBars();draw();
+}
+function finish(win){ended=true;running=false;if(win){burst(boss.x+boss.w/2,boss.y+40,"#ffe66d",60);$("message").textContent="🏆 VITÓRIA! Você derrotou a Aninha!";}else $("message").textContent="💥 FIM DE JOGO! Tente novamente!";setTimeout(()=>{$("choose").style.display="flex";$("start").textContent=win?"JOGAR NOVAMENTE ▶":"TENTAR NOVAMENTE ▶";},900);}
+function loop(){update();requestAnimationFrame(loop);}
+const stick=$("stick"),knob=$("knob");
+function joystickMove(e){if(!joystick.active)return;const r=stick.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),max=32,dist=Math.hypot(dx,dy),scale=dist>max?max/dist:1,x=dx*scale,y=dy*scale;knob.style.left=(30+x)+"px";knob.style.top=(30+y)+"px";joystick.x=Math.abs(x)<8?0:x/max;joystick.y=y/max;}
+stick.onpointerdown=e=>{joystick.active=true;stick.setPointerCapture(e.pointerId);joystickMove(e);};stick.onpointermove=joystickMove;
+function resetStick(){joystick.active=false;joystick.x=0;joystick.y=0;knob.style.left="30px";knob.style.top="30px";}stick.onpointerup=resetStick;stick.onpointercancel=resetStick;
+window.addEventListener("keydown",e=>{keys[e.key]=true;if(e.key===" "){e.preventDefault();attack("hit");}if(e.key.toLowerCase()==="j")attack("special");if(e.key.toLowerCase()==="k")attack("blast");});window.addEventListener("keyup",e=>keys[e.key]=false);
+resize();loop();
+})();
+</script>
+</body>
+</html>
